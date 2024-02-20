@@ -1,79 +1,98 @@
-import tkinter as tk
-from tkinter import filedialog
 from kivy.app import App
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.label import Label
 from kivy.uix.textinput import TextInput
 from kivy.uix.button import Button
-from kivy.uix.popup import Popup
-import json
-import os
+import sqlite3
+import mysql.connector
 
-class CadastroTonerApp(App):
+class TonerApp(App):
     def build(self):
-        self.root = BoxLayout(orientation='vertical', spacing=10, padding=10)
+        return TonerLayout()
 
-        self.serial_label = Label(text="Serial do Toner:")
-        self.serial_entry = TextInput(multiline=False, height=30)
+class TonerLayout(BoxLayout):
+    def __init__(self, **kwargs):
+        super(TonerLayout, self).__init__(**kwargs)
+        self.orientation = 'vertical'
+        self.spacing = 10
+        self.padding = 10
 
-        self.modelo_label = Label(text="Modelo:")
-        self.modelo_entry = TextInput(multiline=False, height=30)
+        # Adicione widgets aqui
+        self.add_widget(Label(text='Serial:'))
+        self.ids.serial_input = TextInput(multiline=False)
+        self.add_widget(self.ids.serial_input)
 
-        self.tipo_label = Label(text="Tipo:")
-        self.tipo_entry = TextInput(multiline=False, height=30)
+        self.add_widget(Label(text='Modelo:'))
+        self.ids.modelo_input = TextInput(multiline=False)
+        self.add_widget(self.ids.modelo_input)
 
-        self.folder_label = Label(text="Escolha a pasta de destino:")
-        self.folder_button = Button(text="Escolher Pasta", on_press=self.choose_folder)
+        self.add_widget(Label(text='Cor:'))
+        self.ids.cor_input = TextInput(multiline=False)
+        self.add_widget(self.ids.cor_input)
 
-        self.cadastrar_button = Button(text="Cadastrar", on_press=self.cadastrar_toner)
+        submit_button = Button(text='Submit', on_press=self.on_submit)
+        self.add_widget(submit_button)
 
-        self.root.add_widget(self.serial_label)
-        self.root.add_widget(self.serial_entry)
-        self.root.add_widget(self.modelo_label)
-        self.root.add_widget(self.modelo_entry)
-        self.root.add_widget(self.tipo_label)
-        self.root.add_widget(self.tipo_entry)
-        self.root.add_widget(self.folder_label)
-        self.root.add_widget(self.folder_button)
-        self.root.add_widget(self.cadastrar_button)
+        # Inicializar o banco de dados local
+        self.init_local_db()
 
-        return self.root
+    def init_local_db(self):
+        # Conectar ao banco de dados SQLite local
+        conn_local = sqlite3.connect('local_database.db')
+        cursor_local = conn_local.cursor()
 
-    def choose_folder(self, instance):
-        folder_path = filedialog.askdirectory()
-        if folder_path:
-            self.folder_label.text = f"Escolha a pasta de destino: {folder_path}"
+        # Criar a tabela 'toner' se não existir
+        cursor_local.execute("""
+            CREATE TABLE IF NOT EXISTS toner (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                serial TEXT NOT NULL,
+                modelo TEXT NOT NULL,
+                cor TEXT NOT NULL
+            )
+        """)
 
-    def cadastrar_toner(self, instance):
-        serial = self.serial_entry.text
-        modelo = self.modelo_entry.text
-        tipo = self.tipo_entry.text
-        folder_path = self.folder_label.text.replace("Escolha a pasta de destino: ", "")
+        # Commit e fechar conexão
+        conn_local.commit()
+        conn_local.close()
 
-        if serial and modelo and tipo and folder_path:
-            self.show_popup("Cadastro realizado", "Toner cadastrado com sucesso!")
+    def save_local_db(self, serial, modelo, cor):
+        # Conectar ao banco de dados SQLite local
+        conn_local = sqlite3.connect('local_database.db')
+        cursor_local = conn_local.cursor()
 
-            # Salvar as informações em um arquivo JSON
-            data = {"serial": serial, "modelo": modelo, "tipo": tipo}
-            json_data = json.dumps(data, indent=2)
+        # Inserir dados na tabela 'toner'
+        cursor_local.execute("INSERT INTO toner (serial, modelo, cor) VALUES (?, ?, ?)",
+                             (serial, modelo, cor))
 
-            json_filename = f"{serial}_{modelo}_{tipo}.json"
-            json_path = os.path.join(folder_path, json_filename)
+        # Commit e fechar conexão
+        conn_local.commit()
+        conn_local.close()
 
-            with open(json_path, 'w') as json_file:
-                json_file.write(json_data)
+    def save_remote_db(self, serial, modelo, cor):
+        # Conectar ao banco de dados MySQL remoto
+        conn_remote = mysql.connector.connect(host='62.72.62.1', user='u749227288_app',
+                                              password='Mogiforte@1', database='u749227288_inventario')
+        cursor_remote = conn_remote.cursor()
 
-            # Limpar os campos após o cadastro
-            self.serial_entry.text = ""
-            self.modelo_entry.text = ""
-            self.tipo_entry.text = ""
-            self.folder_label.text = "Escolha a pasta de destino:"
-        else:
-            self.show_popup("Erro", "Preencha todos os campos e escolha a pasta de destino!")
+        # Inserir dados na tabela 'toner'
+        cursor_remote.execute("INSERT INTO toner (serial, modelo, cor) VALUES (%s, %s, %s)",
+                              (serial, modelo, cor))
 
-    def show_popup(self, title, content):
-        popup = Popup(title=title, content=Label(text=content), size_hint=(None, None), size=(400, 200))
-        popup.open()
+        # Commit e fechar conexão
+        conn_remote.commit()
+        conn_remote.close()
 
-if __name__ == "__main__":
-    CadastroTonerApp().run()
+    def on_submit(self, instance):
+        # Obtém dados do QR Code e outros inputs
+        serial = self.ids.serial_input.text
+        modelo = self.ids.modelo_input.text
+        cor = self.ids.cor_input.text
+
+        # Salva localmente
+        self.save_local_db(serial, modelo, cor)
+
+        # Salva remotamente
+        self.save_remote_db(serial, modelo, cor)
+
+if __name__ == '__main__':
+    TonerApp().run()
