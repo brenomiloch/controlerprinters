@@ -1,4 +1,0 @@
-python3=3.11.5
-kivy
-sqlite3
-mysql-connector-python
